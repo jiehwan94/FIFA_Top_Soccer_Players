@@ -1,0 +1,128 @@
+---
+title: "Top 10 soccer players in the FIFA Video Games"
+author: "Jiehwan Yang (양지환)"
+date: "2016년 9월 4일"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## 데이터 로딩...
+## Loading data
+
+필요한 패키지를 설치 및 로딩하고 sqlite에 연결한 뒤, 관심있는 데이터를 로딩한다. 경우에 따라 "\" 백슬래쉬를 두번 넣어야 할 수도 있음. 그리고 sqlite를 처음 사용하는 경우, 사용중인 디바이스에 sqlite를 설치해야할 수도 있습니다.
+
+Install and load required packages, connect to sqlite, then load whatever data you are interested in. Note that you might have to put "\" twice for correct syntax. Also, if this is your first time using sqlite, you may have to install it.
+
+```{r, message=FALSE, warning=FALSE}
+library(webshot)
+library(RSQLite)
+library(dplyr)
+library(DT)
+
+setwd("E:\\양지환\\soccer")
+sqlite<- dbDriver("SQLite")
+conn<- dbConnect(sqlite,"database.sqlite")
+
+# list available tables
+dbListTables(conn)
+
+player<- tbl_df(dbGetQuery(conn,"select * from Player"))
+player_stats<- tbl_df(dbGetQuery(conn,"select * from Player_Stats"))
+
+# let's see columns in each table
+str(player)
+str(player_stats)
+
+# Join player and player_stats by player_api_id column and rename it as id
+dat<- player_stats %>%
+  rename(player_stats_id = id) %>%
+  left_join(player, by = "player_api_id")
+
+# Check all the columns the newly created table!!
+str(dat)
+```
+
+As you may have found, *date_stat* contains several dates. I will choose the latest data.
+
+*date_stat* 필드에 여러 날짜가 있습니다. 저는 가장 최근 데이터를 쓰도록 하겠습니다.
+
+```{r}
+latest_dat<- dat %>%
+  group_by(player_api_id)%>%
+  top_n(n=1, wt=date_stat)%>%
+  as.data.frame()
+```
+
+Now we can see it in data frame format, which is more readable!
+
+읽기 쉽도록 위에서 data frame으로 타입을 변경한 걸 알수있습니다.
+```{r}
+head(latest_dat)
+```
+
+Let's look at key characteristics of the top 10 players.
+
+탑 10 선수들의 특징을 살펴보록 합시당.
+```{r}
+#We're using DT library here
+top10<- latest_dat %>%
+  arrange(desc(overall_rating)) %>%
+  head(n=10) %>%
+  as.data.frame()
+
+top10 %>%
+  select(player_name,
+         preferred_foot,
+         height,
+         weight,
+         overall_rating) %>%
+  datatable(., options=list(pageLength = 10))
+```
+
+Unfortunately, the data does not contain information about each player's position. I guess we can differentiate goalies from field players by looking at the values of gk fields. Or we can cluster players, then use predictive analytics to guess the position for each player! For --laziness-- time sake, I will skip that part.
+
+아쉽게도 각 선수의 포지션은 나와 있지 않습니다 ㅠㅠ gk필드의 값을 이용해 골키퍼는 구분할 수 있을지 몰라도.. 아니면 predictive analytics를 이용해 각 선수의 포지션을 예측할 수 있는 모델을 만들 수도 있을 것 같네요 ㅎㅎ 하지만 --귀찮은--시간이 없는 관계로 과감히 skip!!
+
+## Interactive/Dynamic Plots
+### Correlation matrix
+Are there any correlations between the variables?
+You can click on any data points to see a scatter plot.
+
+왼쪽 자그마한 네모를 클릭하면 오른쪽에 두가지 변수의 상관관계를 나타내는 scatter plot을 볼 수 있습니다.
+
+```{r, message=FALSE, warning=FALSE}
+library(qtlcharts)
+
+iplotCorr(top10[,10:42], reorder = TRUE)
+```
+
+### Radar chart
+The radar chart below should look familiar to all those people who have played a sports game at least once in his/her life.
+In order to create the chart, you must slightly transform the data.
+
+피파나 다른 스포츠게임을 해본 사람이면 누구나 한번은 본 radar chart입니다. 밑에 차트를 생성하기 위해서는 데이터 포맷을 약간 바꿔줘야 합니다.
+
+```{r, message=FALSE, warning=FALSE}
+library(radarchart)
+library(tidyr)
+
+new_df<- top10 %>%
+  select(player_name, 10:42) %>%
+  as.data.frame()
+
+new_df<- gather(new_df, key=Label, value=Score, -player_name) %>%
+  spread(key=player_name, value=Score)
+
+chartJSRadar(scores = new_df, maxScale = 100, showToolTipLabel = TRUE)
+```
+
+I wanted the plot to display player_name in descending order but could not find a way to do that... This is by far one of the coolest plots that R package supports!
+
+마우커서를 올려놓았을 때, 선수이름을 순차적으로 나타내고 싶었는데 잘 안되네요.. 역시 R 패키지의 힘은 무한하네요 =)
+
+
